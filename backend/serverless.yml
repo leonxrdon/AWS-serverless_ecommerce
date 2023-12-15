@@ -1,0 +1,78 @@
+service: catalog-shop
+
+custom:
+  catalogTable: CatalogTable
+  paymentTopic: PaymentTopic
+
+package:
+  exclude:
+    - 'node_modules/**'
+    - 'venv/**'
+    - '__pycache__/**'
+
+provider:
+  name: aws
+  runtime: python3.7
+  region: ${opt:region}
+  stage: ${opt:stage, 'dev'}
+  environment:
+    CATALOG_TABLE: ${self:custom.catalogTable}
+    PAYMENT_TOPIC: arn:aws:sns:${self:provider.region}:#{AWS::AccountId}:${self:custom.paymentTopic}
+  iam:
+    role: arn:aws:iam::367314496165:role/LambdaAccessToDynamoDB
+
+functions:
+  get-items:
+    handler: handler.get_items
+    timeout: 6
+    events:
+      - http:
+          path: items
+          method: get
+          cors: true
+
+  payment:
+    handler: handler.payment
+    events:
+      - http:
+          path: buy_item
+          method: post
+          cors: true
+
+  set-items:
+    handler: handler.set_items
+    events:
+      - http:
+          path: set/{count}
+          method: get
+          cors: true
+
+  order-fullfilment:
+    handler: handler.order_fullfilment
+    events:
+      - sns: arn:aws:sns:${self:provider.region}:#{AWS::AccountId}:${self:custom.paymentTopic}
+
+resources:
+  Resources:
+    CatalogTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.catalogTable}
+        AttributeDefinitions:
+          - AttributeName: item_id
+            AttributeType: N
+        KeySchema:
+          - AttributeName: item_id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+    PaymentTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: ${self:custom.paymentTopic}
+        TopicName: ${self:custom.paymentTopic}
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-python-requirements
+  - serverless-pseudo-parameters
